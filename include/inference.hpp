@@ -25,7 +25,7 @@
 #include <chrono>
 #include <NvInferRuntime.h>
 #include "preprocessor.hpp"
-
+#include "postprocessor.hpp"
 using namespace nvinfer1;
 
 struct Params{
@@ -52,6 +52,7 @@ struct Params{
 
     struct IOPathsParams{
         std::string image_path = "../data/hotdog.jpg";    
+        std::string classes_path = "../data/imagenet-classes.txt";
     } ioPathsParams;
 
     struct ModelParams{
@@ -100,7 +101,8 @@ class Inference{
         bool constructNetwork(SampleUniquePtr<nvinfer1::IBuilder>& builder,
             SampleUniquePtr<nvinfer1::INetworkDefinition>& network, SampleUniquePtr<nvinfer1::IBuilderConfig>& config,
             SampleUniquePtr<nvonnxparser::IParser>& parser);
-        Preprocessor mPreprocess{mParams.modelParams.resized_image_size_width, mParams.modelParams.resized_image_size_height};        
+        Preprocessor mPreprocess{mParams.modelParams.resized_image_size_width, mParams.modelParams.resized_image_size_height};    
+        Postprocessor mPostprocess{mParams.ioPathsParams.classes_path};            
         // Inference related functions
         cv::Mat read_image(std::string image_path); 
         bool preprocess(cv::Mat img, cv::Mat &preprocessed_img );

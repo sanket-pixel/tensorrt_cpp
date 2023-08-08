@@ -2,18 +2,11 @@
 
 
 void Preprocessor::resize(cv::Mat input_image, cv::Mat &output_image){
-
-
         cv::resize(input_image, output_image, cv::Size(_resized_width, _resized_height), 0, 0, cv::INTER_LINEAR);
-
 }
 
 
 void Preprocessor::normalization(cv::Mat input_image, cv::Mat &output_image){
-
- // Convert BGR image to RGB
-        cv::Mat rgbImage;
-        // cv::cvtColor(input_image, rgbImage, cv::COLOR_BGR2RGB);
 
         // Convert to float image and scale to [0, 1] range
         cv::Mat float_image;

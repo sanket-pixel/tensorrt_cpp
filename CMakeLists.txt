@@ -33,6 +33,12 @@ add_library(pre_processor  src/preprocessor.cpp)
 set_target_properties(pre_processor PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(pre_processor PUBLIC include)
 
+
+# add postprocessor library
+add_library(post_processor  src/postprocess.cpp)
+set_target_properties(post_processor PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(post_processor PUBLIC include)
+
 # add common 
 file(GLOB common_SRC "${TensorRT_DIR}/samples/common/*.cpp")
 add_library(common ${common_SRC})
@@ -42,7 +48,7 @@ target_include_directories(common PUBLIC  ${TensorRT_DIR}/include ${TensorRT_DIR
 # make Inference library
 add_library(Inference SHARED src/inference.cpp)
 target_include_directories(Inference PUBLIC ${TensorRT_DIR}/include)
-target_link_libraries(Inference PUBLIC pre_processor  nvinfer nvonnxparser stdc++fs  ${CUDA_LIBRARIES} ${OpenCV_LIBS} common)
+target_link_libraries(Inference PUBLIC pre_processor post_processor  nvinfer nvonnxparser stdc++fs  ${CUDA_LIBRARIES} ${OpenCV_LIBS} common)
 set_target_properties(Inference PROPERTIES INSTALL_RPATH "$ORIGIN")
 
 add_executable(main main.cpp)

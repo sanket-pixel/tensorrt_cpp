@@ -9,12 +9,7 @@
  
  */
 #include "inference.hpp"
-// #include "postprocess.hpp"
-// #include "preprocess.hpp"
-
-
-
-// #include "include/preprocess.h"
+#include <memory>
 
 
 //!
@@ -186,32 +181,72 @@ bool Inference::enqueue_input(float* host_buffer, cv::Mat image){
 }
 
 
+inline uint32_t getElementSize(nvinfer1::DataType t) noexcept
+{
+    switch (t)
+    {
+    case nvinfer1::DataType::kINT32: return 4;
+    case nvinfer1::DataType::kFLOAT: return 4;
+    case nvinfer1::DataType::kHALF: return 2;
+    case nvinfer1::DataType::kBOOL:
+    case nvinfer1::DataType::kUINT8:
+    case nvinfer1::DataType::kINT8:
+    case nvinfer1::DataType::kFP8: return 1;
+    }
+    return 0;
+}
 
 void Inference::get_bindings(){
    
     // Create the execution context
     auto context = SampleUniquePtr<nvinfer1::IExecutionContext>(mEngine->createExecutionContext());
-    samplesCommon::BufferManager bufferManager{mEngine};
+    
+    //  input buffers
+    auto dims = context->getBindingDimensions(0);
+    nvinfer1::DataType type = mEngine->getBindingDataType(0);
+    size_t vol = 1;
+    for(int i=0; i < dims.nbDims;i++){
+        vol*=dims.d[i];
+    }
+    size_t input_size_in_bytes = vol*getElementSize(type);
+    float* device_input;
+    cudaMalloc((void**)&device_input, input_size_in_bytes);
+    float* host_input = (float*)malloc(input_size_in_bytes);
 
-    // Read image from Disk 
-    float* host_buffer_image = (float*)bufferManager.getHostBuffer("input");
+    //  output buffers
+    dims = context->getBindingDimensions(1);
+    type = mEngine->getBindingDataType(1);
+    vol = 1;
+    for(int i=0; i < dims.nbDims;i++){
+        vol*=dims.d[i];
+    }
+    size_t output_size_in_bytes = vol*getElementSize(type);
+    float* device_output;
+    cudaMalloc((void**)&device_output, output_size_in_bytes);
+    float* host_output = (float*)malloc(output_size_in_bytes);
+
+    // make array of pointers
+    void* bindings[2] = {device_input, device_output};
+
     cv::Mat img = read_image(mParams.ioPathsParams.image_path);
     cv::Mat preprocessed_image;
     Inference::preprocess(img, preprocessed_image);
-    // Populate host buffer with input image.
-    enqueue_input(host_buffer_image, preprocessed_image);
 
-  
-     // Copy input from host to device
-    bufferManager.copyInputToDevice();
+    // Populate host buffer with input image.
+    enqueue_input(host_input, preprocessed_image);
+    const cudaStream_t& stream = 0;
+    cudaMemcpyAsync(device_input, host_input, input_size_in_bytes, cudaMemcpyHostToDevice, stream);
 
      // Perform inference
-    bool status_0 = context->executeV2(bufferManager.getDeviceBindings().data()); 
-
-    //  Copy output to host
-    bufferManager.copyOutputToHost(); 
+    bool status_0 = context->executeV2(bindings); 
+    cudaMemcpyAsync(host_output, device_output, output_size_in_bytes, cudaMemcpyDeviceToHost, stream);
+    std::cout << host_input[0] << std::endl;
 
      // convert boxes to vector
-    float* class_flattened = static_cast<float*>(bufferManager.getHostBuffer("output"));
-    std::cout << class_flattened[934] << std::endl;
-}
+    float* class_flattened = static_cast<float*>(host_output);
+    std::cout << host_output[934] << std::endl;
+    int num_predictions = 1000;
+    std::vector<float> predictions(class_flattened, class_flattened + num_predictions);
+    mPostprocess.softmax_classify(predictions);
+
+    }
