@@ -34,8 +34,8 @@ struct Params{
     std::string SerializedEnginePath = "../deploy_tools/resnet.engine";
 
     // Input Output Names
-    std::vector<std::string> InputTensorNames;
-    std::vector<std::string> OutputTensorNames;
+    std::string inputTensorName = "input";
+    std::string outputTensorName = "output";
 
     // Input Output Paths
     std::string savePath ;
@@ -43,7 +43,7 @@ struct Params{
     
     // Attrs
     int dlaCore = -1;
-    bool fp16 = false;
+    bool fp16 = true;
     bool int8 = false;
     bool load_engine = true;
     int batch_size = 1;
@@ -63,7 +63,16 @@ struct Params{
     
 };
 
-using samplesCommon::SampleUniquePtr;
+
+class InferLogger : public nvinfer1::ILogger {
+public:
+    void log(nvinfer1::ILogger::Severity severity, const char* msg) noexcept override {
+         if (severity == nvinfer1::ILogger::Severity::kERROR) {
+            // Print only error messages
+            std::cout << "Error: " << msg << std::endl;
+        }
+    }
+};
 
 
 //! \brief  The Inference class implements the MFFD model
@@ -83,24 +92,29 @@ class Inference{
         // Engine Building Functions
         std::shared_ptr<nvinfer1::ICudaEngine> build();
         bool buildFromSerializedEngine();
-        bool engineInitlization();
-        void get_bindings();
-
-        // std::vector<std::vector<float>> get_bindings();
+        bool initialize_inference();
+        void do_inference();
 
     private:
         Params mParams;             //!< The parameters for the sample.
         int BATCH_SIZE_ = 1;        // batch size
-        nvinfer1::Dims mInputDims;  //!< The dimensions of the input to the network.
-        nvinfer1::Dims mOutputDims; //!< The dimensions of the output to the network.
+        
+        size_t input_size_in_bytes, output_size_in_bytes;
+        
+        float *host_input, *device_input;
+        float *host_output, *device_output;
+        void *bindings[2] ;
+        const cudaStream_t& stream = 0;
 
         std::shared_ptr<nvinfer1::IRuntime> mRuntime; //!< The TensorRT runtime used to deserialize the engine
         std::shared_ptr<nvinfer1::ICudaEngine> mEngine; //!< The TensorRT engine used to run the network
+        std::unique_ptr<nvinfer1::IExecutionContext> mContext;
 
+        InferLogger mLogger; 
         // Parses an ONNX model for Inference and creates a TensorRT network
-        bool constructNetwork(SampleUniquePtr<nvinfer1::IBuilder>& builder,
-            SampleUniquePtr<nvinfer1::INetworkDefinition>& network, SampleUniquePtr<nvinfer1::IBuilderConfig>& config,
-            SampleUniquePtr<nvonnxparser::IParser>& parser);
+        bool constructNetwork(std::unique_ptr<nvinfer1::IBuilder>& builder,
+            std::unique_ptr<nvinfer1::INetworkDefinition>& network, std::unique_ptr<nvinfer1::IBuilderConfig>& config,
+            std::unique_ptr<nvonnxparser::IParser>& parser);
         Preprocessor mPreprocess{mParams.modelParams.resized_image_size_width, mParams.modelParams.resized_image_size_height};    
         Postprocessor mPostprocess{mParams.ioPathsParams.classes_path};            
         // Inference related functions

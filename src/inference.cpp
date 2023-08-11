@@ -11,7 +11,6 @@
 #include "inference.hpp"
 #include <memory>
 
-
 //!
 //! \brief Uses a ONNX parser to create the Onnx Inference Network and marks the
 //!        output layers
@@ -21,32 +20,21 @@
 //! \param builder Pointer to the engine builder
 //!
 
-bool Inference::constructNetwork(SampleUniquePtr<nvinfer1::IBuilder>& builder,
-    SampleUniquePtr<nvinfer1::INetworkDefinition>& network, SampleUniquePtr<nvinfer1::IBuilderConfig>& config,
-    SampleUniquePtr<nvonnxparser::IParser>& parser)
+bool Inference::constructNetwork(std::unique_ptr<nvinfer1::IBuilder>& builder,
+    std::unique_ptr<nvinfer1::INetworkDefinition>& network, std::unique_ptr<nvinfer1::IBuilderConfig>& config,
+    std::unique_ptr<nvonnxparser::IParser>& parser)
 {
     auto parsed = parser->parseFromFile(mParams.engineParams.OnnxFilePath.c_str(),
         static_cast<int>(sample::gLogger.getReportableSeverity()));
     if (!parsed)
     {
-        sample::gLogError<< "Onnx model cannot be parsed ! " << std::endl;
+        mLogger.log(nvinfer1::ILogger::Severity::kERROR,  "Onnx model cannot be parsed ! ");
         return false;
     }
     builder->setMaxBatchSize(BATCH_SIZE_);
-    // config->setMaxWorkspaceSize(2_GiB); //8_GiB);
-
     if (mParams.engineParams.fp16)
     {
         config->setFlag(BuilderFlag::kFP16);
-    }
-    if (mParams.engineParams.int8)
-    {
-        config->setFlag(BuilderFlag::kINT8);
-        samplesCommon::setAllDynamicRanges(network.get(), 127.0F, 127.0F);
-    }
-    if (mParams.engineParams.dlaCore >=0 ){
-    samplesCommon::enableDLA(builder.get(), config.get(), mParams.engineParams.dlaCore);
-    sample::gLogInfo << "Deep Learning Acclerator (DLA) was enabled . \n";
     }
     return true;
 }
@@ -63,27 +51,27 @@ bool Inference::constructNetwork(SampleUniquePtr<nvinfer1::IBuilder>& builder,
 //!
 std::shared_ptr<nvinfer1::ICudaEngine> Inference::build()
 {
-    auto builder = SampleUniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(sample::gLogger.getTRTLogger()));
+    auto builder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(mLogger));
     if (!builder)
     {
         return nullptr;
     }
 
     const auto explicitBatch = 1U << static_cast<uint32_t>(NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto network = SampleUniquePtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
+    auto network = std::unique_ptr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
     if (!network)
     {
         return nullptr;
     }
 
-    auto config = SampleUniquePtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+    auto config = std::unique_ptr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
     if (!config)
     {
         return nullptr;
     }
 
     auto parser
-        = SampleUniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, sample::gLogger.getTRTLogger()));
+        = std::unique_ptr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, mLogger));
     if (!parser)
     {
         return nullptr;
@@ -96,30 +84,28 @@ std::shared_ptr<nvinfer1::ICudaEngine> Inference::build()
     }
 
     // CUDA stream used for profiling by the builder.
-    auto profileStream = samplesCommon::makeCudaStream();
+    auto profileStream = cuda_s;
     if (!profileStream)
     {
         return nullptr;
     }
     config->setProfileStream(*profileStream);
 
-    SampleUniquePtr<IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
+    std::unique_ptr<IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
     if (!plan)
     {
         return nullptr;
     }
-
-    mRuntime = std::shared_ptr<nvinfer1::IRuntime>(createInferRuntime(sample::gLogger.getTRTLogger()));
+    mRuntime = std::shared_ptr<nvinfer1::IRuntime>(createInferRuntime(mLogger));
     if (!mRuntime)
     {
         return nullptr;
     }
 
-    mEngine = std::shared_ptr<nvinfer1::ICudaEngine>(
-        mRuntime->deserializeCudaEngine(plan->data(), plan->size()), samplesCommon::InferDeleter());
+    mEngine = std::shared_ptr<nvinfer1::ICudaEngine>(mRuntime->deserializeCudaEngine(plan->data(), plan->size()));
     if (!mEngine)
     {
-        sample::gLogError << "Failed to create engine \n";
+        mLogger.log(nvinfer1::ILogger::Severity::kERROR, "Failed to build Engine.");
         return nullptr;
     }
     
@@ -141,13 +127,10 @@ bool Inference::buildFromSerializedEngine(){
     engineFileStream.read(engineData.get(), engineSize);
     engineFileStream.close();
     // Create the TensorRT runtime
-    mRuntime = std::shared_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(sample::gLogger.getTRTLogger()));   
+    mRuntime = std::shared_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(mLogger));   
      // Deserialize the TensorRT engine
     mEngine = std::shared_ptr<nvinfer1::ICudaEngine>(
             mRuntime->deserializeCudaEngine(engineData.get(), engineSize));   
-
-    std::cout << "Input Image " << mEngine->getBindingDimensions(0) << std::endl; 
-    std::cout << "Output  " << mEngine->getBindingDimensions(1) << std::endl; 
     return true;
 }
 
@@ -196,57 +179,58 @@ inline uint32_t getElementSize(nvinfer1::DataType t) noexcept
     return 0;
 }
 
-void Inference::get_bindings(){
-   
-    // Create the execution context
-    auto context = SampleUniquePtr<nvinfer1::IExecutionContext>(mEngine->createExecutionContext());
-    
-    //  input buffers
-    auto dims = context->getBindingDimensions(0);
-    nvinfer1::DataType type = mEngine->getBindingDataType(0);
-    size_t vol = 1;
-    for(int i=0; i < dims.nbDims;i++){
-        vol*=dims.d[i];
-    }
-    size_t input_size_in_bytes = vol*getElementSize(type);
-    float* device_input;
-    cudaMalloc((void**)&device_input, input_size_in_bytes);
-    float* host_input = (float*)malloc(input_size_in_bytes);
+bool Inference::initialize_inference(){
 
-    //  output buffers
-    dims = context->getBindingDimensions(1);
-    type = mEngine->getBindingDataType(1);
-    vol = 1;
-    for(int i=0; i < dims.nbDims;i++){
-        vol*=dims.d[i];
-    }
-    size_t output_size_in_bytes = vol*getElementSize(type);
-    float* device_output;
-    cudaMalloc((void**)&device_output, output_size_in_bytes);
-    float* host_output = (float*)malloc(output_size_in_bytes);
+        // Create the execution mContext
+        mContext = std::unique_ptr<nvinfer1::IExecutionContext>(mEngine->createExecutionContext());
+        
+        //  input buffers
+        int input_idx = mEngine->getBindingIndex("input");
+        std::cout << input_idx << std::endl;
+        auto input_dims = mContext->getBindingDimensions(input_idx);
+        nvinfer1::DataType input_type = mEngine->getBindingDataType(input_idx);
+        size_t input_vol = 1;
+        for(int i=0; i < input_dims.nbDims;i++){
+            input_vol*=input_dims.d[i];
+        }
+        input_size_in_bytes = input_vol*getElementSize(input_type);
+        cudaMalloc((void**)&device_input, input_size_in_bytes);
+        host_input = (float*)malloc(input_size_in_bytes);
+        bindings[input_idx] = device_input;
 
-    // make array of pointers
-    void* bindings[2] = {device_input, device_output};
+        //  output buffers
+        int output_idx = mEngine->getBindingIndex("output");
+        auto output_dims = mContext->getBindingDimensions(output_idx);
+        nvinfer1::DataType output_type = mEngine->getBindingDataType(output_idx);
+        size_t output_vol = 1;
+        for(int i=0; i < output_dims.nbDims;i++){
+            output_vol*=output_dims.d[i];
+        }
+        output_size_in_bytes = output_vol*getElementSize(output_type);
+        cudaMalloc((void**)&device_output, output_size_in_bytes);
+        host_output = (float*)malloc(output_size_in_bytes);
+        bindings[output_idx] = device_output;
+
+                 
+}
+
+
+void Inference::do_inference(){
 
     cv::Mat img = read_image(mParams.ioPathsParams.image_path);
     cv::Mat preprocessed_image;
     Inference::preprocess(img, preprocessed_image);
-
-    // Populate host buffer with input image.
+    // populate host buffer with input image.
     enqueue_input(host_input, preprocessed_image);
-    const cudaStream_t& stream = 0;
+    // copy input from host to device
     cudaMemcpyAsync(device_input, host_input, input_size_in_bytes, cudaMemcpyHostToDevice, stream);
-
-     // Perform inference
-    bool status_0 = context->executeV2(bindings); 
+    // perform inference
+    bool status_0 = mContext->executeV2(bindings); 
+    // copy input from device to host
     cudaMemcpyAsync(host_output, device_output, output_size_in_bytes, cudaMemcpyDeviceToHost, stream);
-    std::cout << host_input[0] << std::endl;
-
-     // convert boxes to vector
+    // apply softmax to output and get prediction
     float* class_flattened = static_cast<float*>(host_output);
-    std::cout << host_output[934] << std::endl;
-    int num_predictions = 1000;
-    std::vector<float> predictions(class_flattened, class_flattened + num_predictions);
+    std::vector<float> predictions(class_flattened, class_flattened + mParams.modelParams.num_classes);
     mPostprocess.softmax_classify(predictions);
 
-    }
+}
