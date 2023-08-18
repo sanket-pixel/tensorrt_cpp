@@ -7,7 +7,7 @@
 Postprocessor::Postprocessor(const std::string& class_file_path) : _class_file_path(class_file_path) {
 }
 
-void Postprocessor::softmax_classify(const std::vector<float>& outputs) {
+void Postprocessor::softmax_classify(const std::vector<float>& outputs, bool verbose) {
     // Read class names from the provided class file
     std::ifstream class_file(_class_file_path);
     std::vector<std::string> classes;
@@ -40,10 +40,14 @@ void Postprocessor::softmax_classify(const std::vector<float>& outputs) {
     });
 
     // Print the top classes predicted by the model
-    int i = 0;
-    while (confidences[indices[i]] > 50) {
+    if(verbose){
+        int i = 0;
+        while (confidences[indices[i]] > 50) {
         int class_idx = indices[i];
         std::cout << "class: " << classes[class_idx] << ", confidence: " << confidences[class_idx] << "%, index: " << class_idx << std::endl;
         ++i;
     }
+
+    }
+    
 }

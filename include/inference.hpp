@@ -9,11 +9,8 @@
  @copyright Copyright (c) 2023
  
  */
-#include "argsParser.h"
-#include "buffers.h"
-#include "common.h"
-#include "logger.h"
-#include "parserOnnxConfig.h"
+// #include "parserOnnxConfig.h"
+#include "NvOnnxParser.h"
 #include <opencv2/opencv.hpp>
 #include "NvInfer.h"
 #include <cuda_runtime_api.h>
@@ -94,15 +91,16 @@ class Inference{
         bool buildFromSerializedEngine();
         bool initialize_inference();
         void do_inference();
+        float *host_input, *device_input;
+        float *host_output, *device_output;
+        float latency;
+        bool verbose;
 
     private:
         Params mParams;             //!< The parameters for the sample.
         int BATCH_SIZE_ = 1;        // batch size
         
         size_t input_size_in_bytes, output_size_in_bytes;
-        
-        float *host_input, *device_input;
-        float *host_output, *device_output;
         void *bindings[2] ;
         const cudaStream_t& stream = 0;
 
@@ -111,12 +109,14 @@ class Inference{
         std::unique_ptr<nvinfer1::IExecutionContext> mContext;
 
         InferLogger mLogger; 
+
         // Parses an ONNX model for Inference and creates a TensorRT network
         bool constructNetwork(std::unique_ptr<nvinfer1::IBuilder>& builder,
             std::unique_ptr<nvinfer1::INetworkDefinition>& network, std::unique_ptr<nvinfer1::IBuilderConfig>& config,
             std::unique_ptr<nvonnxparser::IParser>& parser);
         Preprocessor mPreprocess{mParams.modelParams.resized_image_size_width, mParams.modelParams.resized_image_size_height};    
-        Postprocessor mPostprocess{mParams.ioPathsParams.classes_path};            
+        Postprocessor mPostprocess{mParams.ioPathsParams.classes_path};     
+
         // Inference related functions
         cv::Mat read_image(std::string image_path); 
         bool preprocess(cv::Mat img, cv::Mat &preprocessed_img );

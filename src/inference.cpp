@@ -10,6 +10,7 @@
  */
 #include "inference.hpp"
 #include <memory>
+#include <chrono>
 
 //!
 //! \brief Uses a ONNX parser to create the Onnx Inference Network and marks the
@@ -24,8 +25,9 @@ bool Inference::constructNetwork(std::unique_ptr<nvinfer1::IBuilder>& builder,
     std::unique_ptr<nvinfer1::INetworkDefinition>& network, std::unique_ptr<nvinfer1::IBuilderConfig>& config,
     std::unique_ptr<nvonnxparser::IParser>& parser)
 {
+    
     auto parsed = parser->parseFromFile(mParams.engineParams.OnnxFilePath.c_str(),
-        static_cast<int>(sample::gLogger.getReportableSeverity()));
+        static_cast<int>(mLogge));
     if (!parsed)
     {
         mLogger.log(nvinfer1::ILogger::Severity::kERROR,  "Onnx model cannot be parsed ! ");
@@ -84,12 +86,12 @@ std::shared_ptr<nvinfer1::ICudaEngine> Inference::build()
     }
 
     // CUDA stream used for profiling by the builder.
-    auto profileStream = cuda_s;
+    auto profileStream = stream;
     if (!profileStream)
     {
         return nullptr;
     }
-    config->setProfileStream(*profileStream);
+    config->setProfileStream(profileStream);
 
     std::unique_ptr<IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
     if (!plan)
@@ -131,6 +133,8 @@ bool Inference::buildFromSerializedEngine(){
      // Deserialize the TensorRT engine
     mEngine = std::shared_ptr<nvinfer1::ICudaEngine>(
             mRuntime->deserializeCudaEngine(engineData.get(), engineSize));   
+          // Create the execution mContext
+    mContext = std::unique_ptr<nvinfer1::IExecutionContext>(mEngine->createExecutionContext());
     return true;
 }
 
@@ -181,8 +185,7 @@ inline uint32_t getElementSize(nvinfer1::DataType t) noexcept
 
 bool Inference::initialize_inference(){
 
-        // Create the execution mContext
-        mContext = std::unique_ptr<nvinfer1::IExecutionContext>(mEngine->createExecutionContext());
+  
         
         //  input buffers
         int input_idx = mEngine->getBindingIndex("input");
@@ -221,16 +224,20 @@ void Inference::do_inference(){
     cv::Mat preprocessed_image;
     Inference::preprocess(img, preprocessed_image);
     // populate host buffer with input image.
+    auto start_time = std::chrono::high_resolution_clock::now();
     enqueue_input(host_input, preprocessed_image);
     // copy input from host to device
-    cudaMemcpyAsync(device_input, host_input, input_size_in_bytes, cudaMemcpyHostToDevice, stream);
-    // perform inference
+    cudaMemcpy(device_input, host_input, input_size_in_bytes, cudaMemcpyHostToDevice);
+       // perform inference
     bool status_0 = mContext->executeV2(bindings); 
     // copy input from device to host
-    cudaMemcpyAsync(host_output, device_output, output_size_in_bytes, cudaMemcpyDeviceToHost, stream);
+    cudaMemcpy(host_output, device_output, output_size_in_bytes, cudaMemcpyDeviceToHost);
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<float, std::milli> duration = end_time - start_time;
+    latency = duration.count();
     // apply softmax to output and get prediction
     float* class_flattened = static_cast<float*>(host_output);
     std::vector<float> predictions(class_flattened, class_flattened + mParams.modelParams.num_classes);
-    mPostprocess.softmax_classify(predictions);
+    mPostprocess.softmax_classify(predictions, verbose);
 
 }

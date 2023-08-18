@@ -10,5 +10,5 @@ private:
 public:
     Postprocessor(const std::string& class_file_path);
 
-    void softmax_classify(const std::vector<float>& outputs);
+    void softmax_classify(const std::vector<float>& outputs, bool verbose);
 };

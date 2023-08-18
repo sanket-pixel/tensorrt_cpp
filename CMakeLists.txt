@@ -38,12 +38,12 @@ target_include_directories(pre_processor PUBLIC include)
 add_library(post_processor  src/postprocess.cpp)
 set_target_properties(post_processor PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(post_processor PUBLIC include)
-
+ 
 # add common 
-file(GLOB common_SRC "${TensorRT_DIR}/samples/common/*.cpp")
-add_library(common ${common_SRC})
-set_target_properties(common PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(common PUBLIC  ${TensorRT_DIR}/include ${TensorRT_DIR}/samples/common)
+# file(GLOB common_SRC "${TensorRT_DIR}/samples/common/*.cpp")
+# add_library(common ${common_SRC})
+# set_target_properties(common PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# target_include_directories(common PUBLIC  ${TensorRT_DIR}/include ${TensorRT_DIR}/samples/common)
 
 # make Inference library
 add_library(Inference SHARED src/inference.cpp)
