@@ -66,7 +66,7 @@ public:
     void log(nvinfer1::ILogger::Severity severity, const char* msg) noexcept override {
          if (severity == nvinfer1::ILogger::Severity::kERROR) {
             // Print only error messages
-            std::cout << "Error: " << msg << std::endl;
+            std::cout << "TRT_Logs : " << msg << std::endl;
         }
     }
 };

@@ -27,7 +27,7 @@ bool Inference::constructNetwork(std::unique_ptr<nvinfer1::IBuilder>& builder,
 {
     
     auto parsed = parser->parseFromFile(mParams.engineParams.OnnxFilePath.c_str(),
-        static_cast<int>(mLogge));
+        1);
     if (!parsed)
     {
         mLogger.log(nvinfer1::ILogger::Severity::kERROR,  "Onnx model cannot be parsed ! ");
@@ -83,19 +83,13 @@ std::shared_ptr<nvinfer1::ICudaEngine> Inference::build()
     if (!constructed)
     {
         return nullptr;
+    }else{
+         mLogger.log(nvinfer1::ILogger::Severity::kERROR,  "Network made ! ");
     }
-
-    // CUDA stream used for profiling by the builder.
-    auto profileStream = stream;
-    if (!profileStream)
-    {
-        return nullptr;
-    }
-    config->setProfileStream(profileStream);
-
     std::unique_ptr<IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
     if (!plan)
     {
+        mLogger.log(nvinfer1::ILogger::Severity::kERROR, "Failed to build Network.");
         return nullptr;
     }
     mRuntime = std::shared_ptr<nvinfer1::IRuntime>(createInferRuntime(mLogger));
