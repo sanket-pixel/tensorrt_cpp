@@ -177,13 +177,9 @@ inline uint32_t getElementSize(nvinfer1::DataType t) noexcept
     return 0;
 }
 
-bool Inference::initialize_inference(){
-
-  
-        
+bool Inference::initialize_inference(){      
         //  input buffers
         int input_idx = mEngine->getBindingIndex("input");
-        std::cout << input_idx << std::endl;
         auto input_dims = mContext->getBindingDimensions(input_idx);
         nvinfer1::DataType input_type = mEngine->getBindingDataType(input_idx);
         size_t input_vol = 1;

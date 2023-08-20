@@ -1,10 +1,10 @@
-. tool/environment.sh
+. tools/environment.sh
 
-python tools/torch_inference
+python tools/torch_inference.py
 
 mkdir -p build
 
 cd build
 cmake ..
-make 
+make > /dev/null
 ./main --$MODE

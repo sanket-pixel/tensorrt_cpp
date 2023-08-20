@@ -19,7 +19,7 @@ def preprocess_image(img_path):
     batch_data = torch.unsqueeze(input_data, 0)
     return batch_data
 
-def postprocess(output_data):
+def postprocess(output_data, verbose):
     # get class names
     with open("data/imagenet-classes.txt") as f:
         classes = [line.strip() for line in f.readlines()]
@@ -31,7 +31,8 @@ def postprocess(output_data):
     # print the top classes predicted by the model
     while confidences[indices[0][i]] > 50:
         class_idx = indices[0][i]
-        print(
+        if verbose:
+             print(
             "class:",
             classes[class_idx],
             ", confidence:",
@@ -42,19 +43,21 @@ def postprocess(output_data):
         i += 1
         
         
-        
+print("=================== STARTING PYTORCH INFERENCE===============================")
+
 input = preprocess_image("data/hotdog.jpg").cuda()
-model = models.resnet50(pretrained=True)
+model = models.resnet50(weights='ResNet50_Weights.IMAGENET1K_V1')
 model.eval()
 model.cuda()
 with torch.no_grad():
     output = model(input)
-postprocess(output)
+postprocess(output, True)
 
 # save network output
 op = output.clone().cpu().numpy()
 file_path_op = 'torch_stuff/output.txt'
 np.savetxt(file_path_op, op, fmt='%f', delimiter=',')  # Use fmt='%d' for integers
+print("Saved Pytorch output in torch_stuff/output.txt")
 
 # save average latency for 10 iterations
 num_iterations = 10
@@ -66,13 +69,18 @@ with torch.no_grad():
         start_time = time.time()
         output = model(input)
         end_time = time.time()
-        postprocess(output)
+        postprocess(output, False)
         latency = (end_time - start_time) * 1000  # Convert to milliseconds
         total_latency += latency
 
 average_latency = total_latency / num_iterations
+    
+print(f"Average Latency for {num_iterations} iterations: {average_latency:.2f} ms")
+
 # Write the average latency to a text file
 with open("torch_stuff/latency.txt", "w") as f:
     f.write(f"{average_latency:.2f}")
     
-print(f"Average Latency for {num_iterations} iterations: {average_latency:.2f} ms")
+print("Saved Pytorch output in torch_stuff/output.txt")
+
+print("=======================================================================")

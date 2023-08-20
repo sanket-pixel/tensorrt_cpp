@@ -20,7 +20,7 @@ include_directories(${CUDA_INCLUDE_DIRS})
 link_directories(${CUDA_LIBRARY_DIRS})
 
 # enable cuda support
-set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
+set(CMAKE_CUDA_COMPILER $ENV{CUDA_Bin}/nvcc)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -arch=sm_50 --expt-extended-lambda -D_MWAITXINTRIN_H_INCLUDED")
 
 # tensorrt

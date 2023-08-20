@@ -63,17 +63,16 @@ int main(int argc, char* argv[]) {
         if (std::strcmp(argv[i], "--build_engine") == 0) {
             Inference.build();
         } else if (std::strcmp(argv[i], "--inference") == 0) {
+            std::cout<< "=================== STARTING C++ TensorRT INFERENCE===============================" << std::endl;
             Inference.buildFromSerializedEngine();
             Inference.initialize_inference();
-
             // compute difference between python and C++
             Inference.verbose = true;
             Inference.do_inference();
             float *host_output = Inference.host_output;
             std::vector<float> python_output = readPythonOutput("../torch_stuff/output.txt");
             float mean_absolute_difference = calculateMeanAbsoluteDifference(host_output, python_output);
-            std::cout << "Mean Absolute Difference: " << mean_absolute_difference << std::endl;
-            std::cout << "--------------------------------------------------------------------" << std::endl;
+            std::cout << "Mean Absolute Difference in Pytorch and TensorRT C++ : " << mean_absolute_difference << std::endl;
             // measure speedup
             int num_iterations = 10;
             float total_latency = 0.0f;
@@ -88,11 +87,13 @@ int main(int argc, char* argv[]) {
             std::ifstream pytorch_latency_file("../torch_stuff/latency.txt");
             float pytorch_latency;
             pytorch_latency_file >> pytorch_latency;
-
+            std::cout<< "=====================================SUMMARY=================================" << std::endl;
             float speedup = pytorch_latency / tensorrt_latency;   
             std::cout << "Pytorch Latency: " << pytorch_latency << " ms" << std::endl;
             std::cout << "TensorRT in C++  Latency: " << tensorrt_latency << " ms" << std::endl;
             std::cout << "Speedup by Quantization: " << speedup << "x" << std::endl;
+            std::cout << "Mean Absolute Difference in Pytorch and TensorRT C++ : " << mean_absolute_difference << std::endl;
+            std::cout<< "============================================================================" << std::endl;
         }
     }
 
