@@ -14,7 +14,7 @@ export CUDA_HOME=/usr/local/cuda
 export MODE=inference
 
 # Write your conda env name here
-export CONDA_ENV=tensorrt
+export CONDA_ENV=ptl
 
 
 # check the configuration path
